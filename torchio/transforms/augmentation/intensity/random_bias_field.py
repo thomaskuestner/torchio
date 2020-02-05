@@ -24,17 +24,18 @@ class RandomBiasField(RandomTransform):
             self,
             coefficients_range=(-0.5, 0.5),
             order=3,
-            proportion_to_augment=0.5,
+            probability=1,
             seed=None,
             verbose=False,
             ):
-        super().__init__(seed=seed, verbose=verbose)
+        """
+        If I do the probability thing, the random parameters in the sample dict
+        are going to be different and the batches won't be properly collated.
+        I need to think about how to handle this.
+        """
+        super().__init__(probability=probability, seed=seed, verbose=verbose)
         self.coefficients_range = coefficients_range
         self.order = order
-        self.proportion_to_augment = self.parse_probability(
-            proportion_to_augment,
-            'proportion_to_augment',
-        )
 
     def apply_transform(self, sample):
         for image_name, image_dict in sample.items():
