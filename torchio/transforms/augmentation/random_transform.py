@@ -5,13 +5,16 @@ from .. import Transform, Interpolation
 
 
 class RandomTransform(Transform):
-    def __init__(self, seed=None, verbose=False):
+    def __init__(self, probability=1, seed=None, verbose=False):
         super().__init__(verbose=verbose)
+        self.probability = self.parse_probability(probability, 'probability')
         self.seed = seed
 
     def __call__(self, sample):
         self.check_seed()
-        return super().__call__(sample)
+        do_it = torch.rand(1) < self.probability
+        result = super().__call__(sample) if do_it else sample
+        return result
 
     @staticmethod
     @abstractmethod
