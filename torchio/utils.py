@@ -52,6 +52,27 @@ def is_image_dict(variable):
     return has_right_keys
 
 
+def get_data_dir():
+    repo_dir = Path(__file__).parent.parent
+    data_dir = repo_dir / 'data'
+    return data_dir
+
+
+def get_tiny_dataset():
+    from . import Subject, Image, ImagesDataset
+    dataset_dir = get_data_dir() / 'ixi_minimal'
+    image_paths = dataset_dir.glob('image/*image*.nii.gz')
+    label_paths = dataset_dir.glob('label/*label*.nii.gz')
+    subjects = []
+    for image_path, label_path in zip(image_paths, label_paths):
+        subject = Subject(
+            Image('t1', image_path, INTENSITY),
+            Image('brain_seg', label_path, LABEL),
+        )
+        subjects.append(subject)
+    return ImagesDataset(subjects)
+
+
 def create_dummy_dataset(
         num_images,
         size_range,
