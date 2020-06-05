@@ -14,8 +14,7 @@ class GridSampler(Dataset):
     r"""Extract patches across a whole volume.
 
     Grid samplers are useful to perform inference using all patches from a
-    volume. It is often used with a
-    :py:class:`~torchio.data.GridAggregator`.
+    volume. It is often used with a :py:class:`~torchio.data.GridAggregator`.
 
     Args:
         sample: Instance of :py:class:`~torchio.data.subject.Subject`
@@ -90,20 +89,20 @@ class GridSampler(Dataset):
         cropped_sample['index_ini'] = index_ini.astype(int)
         return cropped_sample
 
-    @staticmethod
     def _grid_spatial_coordinates(
+            self,
             volume_shape: Tuple[int, int, int],
             patch_shape: Tuple[int, int, int],
-            border: Tuple[int, int, int],
+            patch_overlap: Tuple[int, int, int],
             ) -> np.ndarray:
         volume_shape = np.array(volume_shape)
         patch_shape = np.array(patch_shape)
-        border = np.array(border)
-        grid_size = np.maximum(patch_shape - 2 * border, 0)
+        patch_overlap = np.array(patch_overlap)
+        grid_size = np.maximum(patch_shape - 2 * patch_overlap, 0)
         num_dims = len(volume_shape)
 
         steps_along_each_dim = [
-            GridSampler._enumerate_step_points(
+            self._enumerate_step_points(
                 starting=0,
                 ending=volume_shape[i],
                 patch_shape=patch_shape[i],
