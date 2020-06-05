@@ -6,7 +6,7 @@ import numpy as np
 from torch.utils.data import Dataset
 
 from ...utils import to_tuple
-from ...torchio import LOCATION, TypeTuple, DATA
+from ...torchio import LOCATION, TypeTuple, DATA, TypeTripletInt
 from ..subject import Subject
 
 
@@ -40,11 +40,9 @@ class GridSampler(Dataset):
         self.sample = sample
         patch_size = to_tuple(patch_size, length=3)
         patch_overlap = to_tuple(patch_overlap, length=3)
-        self.locations = self._grid_spatial_coordinates(
-            self.sample.spatial_shape,
-            patch_size,
-            patch_overlap,
-        )
+        sizes = self.sample.spatial_shape, patch_size, patch_overlap
+        self.parse_sizes(*sizes)
+        self.locations = self.get_patches_locations(*sizes)
 
     def __len__(self):
         return len(self.locations)
@@ -58,11 +56,33 @@ class GridSampler(Dataset):
         cropped_sample[LOCATION] = location
         return cropped_sample
 
+    @staticmethod
+    def parse_sizes(
+            image_size: TypeTripletInt,
+            patch_size: TypeTripletInt,
+            patch_overlap: TypeTripletInt,
+            ) -> None:
+        image_size = np.array(image_size)
+        patch_size = np.array(patch_size)
+        patch_overlap = np.array(patch_overlap)
+        if np.any(patch_size > image_size):
+            message = (
+                f'Patch size {tuple(patch_size)} cannot be'
+                f' larger than image size {tuple(image_size)}'
+            )
+            raise ValueError(message)
+        if np.any(patch_overlap >= patch_size):
+            message = (
+                f'Patch overlap {tuple(patch_overlap)} must be smaller'
+                f' larger than patch size {tuple(image_size)}'
+            )
+            raise ValueError(message)
+
     def extract_patch(
             self,
             sample: Subject,
-            index_ini: Tuple[int, int, int],
-            index_fin: Tuple[int, int, int],
+            index_ini: TypeTripletInt,
+            index_fin: TypeTripletInt,
             ) -> Subject:
         cropped_sample = self.copy_and_crop(
             sample,
@@ -89,74 +109,26 @@ class GridSampler(Dataset):
         cropped_sample['index_ini'] = index_ini.astype(int)
         return cropped_sample
 
-    def _grid_spatial_coordinates(
-            self,
-            volume_shape: Tuple[int, int, int],
-            patch_shape: Tuple[int, int, int],
-            patch_overlap: Tuple[int, int, int],
-            ) -> np.ndarray:
-        volume_shape = np.array(volume_shape)
-        patch_shape = np.array(patch_shape)
-        patch_overlap = np.array(patch_overlap)
-        grid_size = np.maximum(patch_shape - 2 * patch_overlap, 0)
-        num_dims = len(volume_shape)
-
-        steps_along_each_dim = [
-            self._enumerate_step_points(
-                starting=0,
-                ending=volume_shape[i],
-                patch_shape=patch_shape[i],
-                step_size=grid_size[i],
-            )
-            for i in range(num_dims)
-        ]
-        starting_coords = np.asanyarray(np.meshgrid(*steps_along_each_dim))
-        starting_coords = starting_coords.reshape((num_dims, -1)).T
-        n_locations = starting_coords.shape[0]
-        spatial_coords = np.zeros((n_locations, num_dims * 2), dtype=np.int32)
-        spatial_coords[:, :num_dims] = starting_coords
-        for idx in range(num_dims):
-            spatial_coords[:, num_dims + idx] = (
-                starting_coords[:, idx]
-                + patch_shape[idx]
-            )
-        max_coordinates = np.max(spatial_coords, axis=0)[num_dims:]
-        if np.any(max_coordinates > volume_shape[:num_dims]):
-            message = (
-                f'Window size {tuple(patch_shape)}'
-                f' is larger than volume {tuple(volume_shape)}'
-            )
-            raise ValueError(message)
-        return spatial_coords
-
     @staticmethod
-    def _enumerate_step_points(
-            starting: Tuple[int, int, int],
-            ending: Tuple[int, int, int],
-            patch_shape: Tuple[int, int, int],
-            step_size: Tuple[int, int, int],
+    def get_patches_locations(
+            image_size: TypeTripletInt,
+            patch_size: TypeTripletInt,
+            patch_overlap: TypeTripletInt,
             ) -> np.ndarray:
-
-        starting = np.maximum(starting, 0)
-        ending = np.maximum(ending, 0)
-        patch_shape = np.maximum(patch_shape, 1)
-        step_size = np.maximum(step_size, 1)
-
-        starting = np.minimum(starting, ending)
-        ending = np.maximum(starting, ending)
-
-        sampling_point_set = []
-        while (starting + patch_shape) <= ending:
-            sampling_point_set.append(starting)
-            starting = starting + step_size
-        additional_last_point = ending - patch_shape
-        sampling_point_set.append(np.maximum(additional_last_point, 0))
-        sampling_point_set = np.unique(sampling_point_set, axis=0)
-        if len(sampling_point_set) == 2:
-            mean = np.round(np.mean(sampling_point_set, axis=0))
-            sampling_point_set = np.append(sampling_point_set, mean)
-        _, uniq_idx = np.unique(sampling_point_set, return_index=True)
-        return sampling_point_set[np.sort(uniq_idx)]
+        indices = []
+        zipped = zip(image_size, patch_size, patch_overlap)
+        for im_size_dim, patch_size_dim, patch_overlap_dim in zipped:
+            end = im_size_dim + 1 - patch_size_dim
+            step = patch_size_dim - patch_overlap_dim
+            indices_dim = list(range(0, end, step))
+            if im_size_dim % step:
+                indices_dim.append(im_size_dim - patch_size_dim)
+            indices.append(indices_dim)
+        indices_ini = np.array(np.meshgrid(*indices)).reshape(3, -1).T
+        indices_ini = np.unique(indices_ini, axis=0)
+        indices_fin = indices_ini + np.array(patch_size)
+        locations = np.hstack((indices_ini, indices_fin))
+        return np.array(sorted(locations.tolist()))
 
 
 def crop(
