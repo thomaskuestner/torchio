@@ -1,16 +1,16 @@
 import copy
-from typing import Tuple
 
 import torch
 import numpy as np
 from torch.utils.data import Dataset
 
+from ..sampler.sampler import PatchSampler
 from ...utils import to_tuple
 from ...torchio import LOCATION, TypeTuple, DATA, TypeTripletInt
 from ..subject import Subject
 
 
-class GridSampler(Dataset):
+class GridSampler(PatchSampler, Dataset):
     r"""Extract patches across a whole volume.
 
     Grid samplers are useful to perform inference using all patches from a
@@ -38,6 +38,7 @@ class GridSampler(Dataset):
             patch_overlap: TypeTuple,
             ):
         self.sample = sample
+        PatchSampler.__init__(self, patch_size)
         patch_size = to_tuple(patch_size, length=3)
         patch_overlap = to_tuple(patch_overlap, length=3)
         sizes = self.sample.spatial_shape, patch_size, patch_overlap
@@ -84,29 +85,12 @@ class GridSampler(Dataset):
             index_ini: TypeTripletInt,
             index_fin: TypeTripletInt,
             ) -> Subject:
-        cropped_sample = self.copy_and_crop(
-            sample,
+        crop = self.get_crop_transform(
+            sample.spatial_shape,
             index_ini,
-            index_fin,
+            index_fin - index_ini,
         )
-        return cropped_sample
-
-    @staticmethod
-    def copy_and_crop(
-            sample: Subject,
-            index_ini: np.ndarray,
-            index_fin: np.ndarray,
-            ) -> dict:
-        cropped_sample = {}
-        iterable = sample.get_images_dict(intensity_only=False).items()
-        for image_name, image in iterable:
-            cropped_sample[image_name] = copy.deepcopy(image)
-            sample_image_dict = image
-            cropped_image_dict = cropped_sample[image_name]
-            cropped_image_dict[DATA] = crop(
-                sample_image_dict[DATA], index_ini, index_fin)
-        # torch doesn't like uint16
-        cropped_sample['index_ini'] = index_ini.astype(int)
+        cropped_sample = crop(sample)
         return cropped_sample
 
     @staticmethod
@@ -129,13 +113,3 @@ class GridSampler(Dataset):
         indices_fin = indices_ini + np.array(patch_size)
         locations = np.hstack((indices_ini, indices_fin))
         return np.array(sorted(locations.tolist()))
-
-
-def crop(
-        image: torch.Tensor,
-        index_ini: np.ndarray,
-        index_fin: np.ndarray,
-        ) -> torch.Tensor:
-    i_ini, j_ini, k_ini = index_ini
-    i_fin, j_fin, k_fin = index_fin
-    return image[..., i_ini:i_fin, j_ini:j_fin, k_ini:k_fin]
