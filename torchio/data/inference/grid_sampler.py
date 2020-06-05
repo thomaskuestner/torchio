@@ -1,12 +1,9 @@
-import copy
-
-import torch
 import numpy as np
 from torch.utils.data import Dataset
 
 from ..sampler.sampler import PatchSampler
 from ...utils import to_tuple
-from ...torchio import LOCATION, TypeTuple, DATA, TypeTripletInt
+from ...torchio import LOCATION, TypeTuple, TypeTripletInt
 from ..subject import Subject
 
 
@@ -75,7 +72,7 @@ class GridSampler(PatchSampler, Dataset):
         if np.any(patch_overlap >= patch_size):
             message = (
                 f'Patch overlap {tuple(patch_overlap)} must be smaller'
-                f' larger than patch size {tuple(image_size)}'
+                f' than patch size {tuple(image_size)}'
             )
             raise ValueError(message)
 
